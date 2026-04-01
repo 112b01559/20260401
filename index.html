@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>經典五子棋 - 音效增強版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #f3f4f6;
+            touch-action: manipulation;
+        }
+        .wood-texture {
+            background-color: #deb887;
+            background-image: url('https://www.transparenttextures.com/patterns/wood-pattern.png');
+        }
+        canvas {
+            max-width: 100%;
+            height: auto;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+            cursor: crosshair;
+        }
+        .status-card {
+            transition: all 0.3s ease;
+        }
+        .active-player {
+            transform: scale(1.05);
+            border: 2px solid #3b82f6;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-4">
+
+    <div class="max-w-4xl w-full flex flex-col items-center">
+        <div class="flex items-center justify-between w-full max-w-md mb-4">
+            <h1 class="text-2xl font-bold text-gray-800">經典五子棋</h1>
+            <!-- 音效開關 -->
+            <button id="mute-btn" onclick="toggleMute()" class="p-2 rounded-full bg-white shadow-sm border border-gray-200 hover:bg-gray-50 transition">
+                <svg id="sound-on-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4V5z"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+                <svg id="sound-off-icon" class="hidden" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4V5z"></path><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>
+            </button>
+        </div>
+
+        <!-- 模式選擇 -->
+        <div class="mb-6 flex items-center bg-white px-4 py-2 rounded-full shadow-sm border border-gray-200">
+            <span class="mr-3 text-sm font-medium text-gray-700">遊戲模式：</span>
+            <label class="flex items-center cursor-pointer">
+                <span id="mode-text" class="mr-3 text-sm font-bold text-blue-600 transition-colors">雙人對弈</span>
+                <div class="relative">
+                    <input type="checkbox" id="ai-toggle" class="sr-only" onchange="toggleMode()">
+                    <div class="block bg-gray-300 w-10 h-6 rounded-full transition"></div>
+                    <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition transform"></div>
+                </div>
+                <span class="ml-3 text-sm font-medium text-gray-400">人機對戰</span>
+            </label>
+        </div>
+
+        <!-- 狀態面板 -->
+        <div class="flex flex-col md:flex-row gap-4 mb-6 w-full max-w-md">
+            <div id="player-black" class="status-card flex-1 bg-white p-3 rounded-lg shadow-md flex items-center justify-between active-player">
+                <div class="flex items-center gap-3">
+                    <div class="w-4 h-4 rounded-full bg-black shadow-sm"></div>
+                    <span id="black-label" class="font-bold text-gray-700 text-sm">黑子 (人類)</span>
+                </div>
+                <div id="black-threat" class="hidden text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold animate-pulse">聽牌中</div>
+            </div>
+            <div id="player-white" class="status-card flex-1 bg-white p-3 rounded-lg shadow-md flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-4 h-4 rounded-full bg-white border border-gray-300 shadow-sm"></div>
+                    <span id="white-label" class="font-bold text-gray-700 text-sm">白子 (人類)</span>
+                </div>
+                <div id="white-threat" class="hidden text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold animate-pulse">聽牌中</div>
+            </div>
+        </div>
+
+        <!-- 遊戲畫布 -->
+        <div class="relative">
+            <canvas id="gomokuCanvas" class="rounded-sm wood-texture"></canvas>
+            
+            <!-- 勝負結算彈窗 -->
+            <div id="gameOverModal" class="hidden absolute inset-0 bg-black/50 flex items-center justify-center rounded-sm z-10">
+                <div class="bg-white p-8 rounded-xl shadow-2xl text-center">
+                    <h2 id="winnerResult" class="text-2xl font-bold mb-4 text-gray-800"></h2>
+                    <button onclick="resetGame()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-full font-medium transition">
+                        再玩一局
+                    </button>
+                </div>
+            </div>
+            
+            <!-- AI 思考提示 -->
+            <div id="ai-thinking" class="hidden absolute top-4 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-4 py-1 rounded-full text-xs font-bold shadow-lg animate-bounce">
+                電腦思考中...
+            </div>
+        </div>
+
+        <!-- 控制按鈕 -->
+        <div class="mt-8 flex gap-4">
+            <button id="undo-btn" onclick="undoMove()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-6 py-2 rounded-lg font-medium transition flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h12.5A5.5 5.5 0 0 1 22 14.5A5.5 5.5 0 0 1 16.5 20H13"/></svg>
+                悔棋
+            </button>
+            <button onclick="resetGame()" class="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-6 py-2 rounded-lg font-medium transition flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
+                重新開始
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // 音效引擎
+        const AudioEngine = (() => {
+            let audioCtx = null;
+            let isMuted = false;
+
+            const init = () => {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            };
+
+            const playTone = (freq, type, duration, volume) => {
+                if (isMuted) return;
+                init();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                
+                gain.gain.setValueAtTime(volume, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            };
+
+            return {
+                playPlace: () => playTone(600, 'sine', 0.1, 0.3),
+                playUndo: () => playTone(300, 'sine', 0.2, 0.2),
+                playWin: () => {
+                    playTone(523.25, 'triangle', 0.5, 0.3); // C5
+                    setTimeout(() => playTone(659.25, 'triangle', 0.5, 0.3), 150); // E5
+                    setTimeout(() => playTone(783.99, 'triangle', 0.8, 0.3), 300); // G5
+                },
+                toggleMute: () => {
+                    isMuted = !isMuted;
+                    return isMuted;
+                }
+            };
+        })();
+
+        const canvas = document.getElementById('gomokuCanvas');
+        const ctx = canvas.getContext('2d');
+        const winnerResult = document.getElementById('winnerResult');
+        const gameOverModal = document.getElementById('gameOverModal');
+        const playerBlackUI = document.getElementById('player-black');
+        const playerWhiteUI = document.getElementById('player-white');
+        const blackThreatLabel = document.getElementById('black-threat');
+        const whiteThreatLabel = document.getElementById('white-threat');
+        const aiToggle = document.getElementById('ai-toggle');
+        const modeText = document.getElementById('mode-text');
+        const whiteLabel = document.getElementById('white-label');
+        const aiThinking = document.getElementById('ai-thinking');
+        const dot = document.querySelector('.dot');
+        const soundOnIcon = document.getElementById('sound-on-icon');
+        const soundOffIcon = document.getElementById('sound-off-icon');
+
+        const GRID_COUNT = 15;
+        let PADDING = 30;
+        let CELL_SIZE = 0;
+        let board = []; 
+        let currentPlayer = 1; 
+        let moveHistory = [];
+        let isGameOver = false;
+        let winningMoves = []; 
+        let isAiMode = false;
+        let isThinking = false;
+
+        function initCanvas() {
+            const size = Math.min(window.innerWidth - 40, 600);
+            canvas.width = size;
+            canvas.height = size;
+            CELL_SIZE = (size - PADDING * 2) / (GRID_COUNT - 1);
+            drawBoard();
+        }
+
+        function initBoard() {
+            board = Array(GRID_COUNT).fill().map(() => Array(GRID_COUNT).fill(0));
+            moveHistory = [];
+            winningMoves = [];
+            currentPlayer = 1;
+            isGameOver = false;
+            isThinking = false;
+            gameOverModal.classList.add('hidden');
+            aiThinking.classList.add('hidden');
+            updateUI();
+            drawBoard();
+        }
+
+        function toggleMute() {
+            const muted = AudioEngine.toggleMute();
+            soundOnIcon.classList.toggle('hidden', muted);
+            soundOffIcon.classList.toggle('hidden', !muted);
+        }
+
+        function toggleMode() {
+            isAiMode = aiToggle.checked;
+            if (isAiMode) {
+                modeText.innerText = "人機對戰";
+                modeText.classList.add('text-purple-600');
+                modeText.classList.remove('text-blue-600');
+                whiteLabel.innerText = "白子 (電腦)";
+                dot.style.transform = 'translateX(100%)';
+            } else {
+                modeText.innerText = "雙人對弈";
+                modeText.classList.add('text-blue-600');
+                modeText.classList.remove('text-purple-600');
+                whiteLabel.innerText = "白子 (人類)";
+                dot.style.transform = 'translateX(0)';
+            }
+            resetGame();
+        }
+
+        function drawBoard() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#5d4037';
+            ctx.lineWidth = 1;
+
+            for (let i = 0; i < GRID_COUNT; i++) {
+                ctx.beginPath();
+                ctx.moveTo(PADDING, PADDING + i * CELL_SIZE);
+                ctx.lineTo(canvas.width - PADDING, PADDING + i * CELL_SIZE);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(PADDING + i * CELL_SIZE, PADDING);
+                ctx.lineTo(PADDING + i * CELL_SIZE, canvas.height - PADDING);
+                ctx.stroke();
+            }
+
+            const dots = [[3, 3], [11, 3], [7, 7], [3, 11], [11, 11]];
+            dots.forEach(([x, y]) => {
+                ctx.beginPath();
+                ctx.arc(PADDING + x * CELL_SIZE, PADDING + y * CELL_SIZE, 4, 0, Math.PI * 2);
+                ctx.fillStyle = '#5d4037';
+                ctx.fill();
+            });
+
+            if (!isGameOver) {
+                winningMoves.forEach(move => {
+                    ctx.beginPath();
+                    ctx.arc(PADDING + move.c * CELL_SIZE, PADDING + move.r * CELL_SIZE, CELL_SIZE * 0.2, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(239, 68, 68, 0.4)';
+                    ctx.fill();
+                });
+            }
+
+            for (let r = 0; r < GRID_COUNT; r++) {
+                for (let c = 0; c < GRID_COUNT; c++) {
+                    if (board[r][c] !== 0) drawPiece(r, c, board[r][c]);
+                }
+            }
+
+            if (moveHistory.length > 0) {
+                const lastMove = moveHistory[moveHistory.length - 1];
+                ctx.beginPath();
+                ctx.strokeStyle = '#ef4444';
+                ctx.lineWidth = 2;
+                ctx.arc(PADDING + lastMove.c * CELL_SIZE, PADDING + lastMove.r * CELL_SIZE, CELL_SIZE * 0.15, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+        }
+
+        function drawPiece(r, c, type) {
+            const x = PADDING + c * CELL_SIZE;
+            const y = PADDING + r * CELL_SIZE;
+            const radius = CELL_SIZE * 0.42;
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, Math.PI * 2);
+            const gradient = ctx.createRadialGradient(x - radius/3, y - radius/3, radius/10, x, y, radius);
+            if (type === 1) {
+                gradient.addColorStop(0, '#4a4a4a');
+                gradient.addColorStop(1, '#000000');
+            } else {
+                gradient.addColorStop(0, '#ffffff');
+                gradient.addColorStop(1, '#d1d1d1');
+            }
+            ctx.fillStyle = gradient;
+            ctx.fill();
+            ctx.strokeStyle = type === 1 ? '#000' : '#999';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
+
+        canvas.addEventListener('mousedown', handleClick);
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            handleInput(touch.clientX - rect.left, touch.clientY - rect.top);
+        });
+
+        function handleClick(e) {
+            const rect = canvas.getBoundingClientRect();
+            handleInput(e.clientX - rect.left, e.clientY - rect.top);
+        }
+
+        function handleInput(x, y) {
+            if (isGameOver || isThinking) return;
+            if (isAiMode && currentPlayer === 2) return;
+
+            const c = Math.round((x - PADDING) / CELL_SIZE);
+            const r = Math.round((y - PADDING) / CELL_SIZE);
+            if (r >= 0 && r < GRID_COUNT && c >= 0 && c < GRID_COUNT && board[r][c] === 0) {
+                placePiece(r, c);
+            }
+        }
+
+        function placePiece(r, c) {
+            board[r][c] = currentPlayer;
+            moveHistory.push({ r, c, player: currentPlayer });
+            
+            AudioEngine.playPlace();
+
+            if (checkWin(r, c)) {
+                drawBoard();
+                endGame(currentPlayer);
+            } else {
+                currentPlayer = currentPlayer === 1 ? 2 : 1;
+                winningMoves = scanForWinningMoves();
+                updateUI();
+                drawBoard();
+
+                if (isAiMode && currentPlayer === 2 && !isGameOver) {
+                    triggerAiMove();
+                }
+            }
+        }
+
+        async function triggerAiMove() {
+            isThinking = true;
+            aiThinking.classList.remove('hidden');
+            await new Promise(resolve => setTimeout(resolve, 600));
+            const bestMove = getBestMove();
+            aiThinking.classList.add('hidden');
+            isThinking = false;
+            if (bestMove) placePiece(bestMove.r, bestMove.c);
+        }
+
+        function getBestMove() {
+            let maxScore = -1;
+            let moves = [];
+            for (let r = 0; r < GRID_COUNT; r++) {
+                for (let c = 0; c < GRID_COUNT; c++) {
+                    if (board[r][c] === 0) {
+                        let attackScore = evaluatePosition(r, c, 2);
+                        let defenseScore = evaluatePosition(r, c, 1);
+                        let totalScore = attackScore + defenseScore * 0.8;
+                        if (totalScore > maxScore) {
+                            maxScore = totalScore;
+                            moves = [{r, c}];
+                        } else if (totalScore === maxScore) {
+                            moves.push({r, c});
+                        }
+                    }
+                }
+            }
+            return moves[Math.floor(Math.random() * moves.length)];
+        }
+
+        function evaluatePosition(r, c, player) {
+            const directions = [[0, 1], [1, 0], [1, 1], [1, -1]];
+            let score = 0;
+            for (let [dr, dc] of directions) {
+                let count = 1, block = 0;
+                let nr = r + dr, nc = c + dc;
+                while (nr >= 0 && nr < GRID_COUNT && nc >= 0 && nc < GRID_COUNT && board[nr][nc] === player) {
+                    count++; nr += dr; nc += dc;
+                }
+                if (!(nr >= 0 && nr < GRID_COUNT && nc >= 0 && nc < GRID_COUNT) || (board[nr][nc] !== 0 && board[nr][nc] !== player)) block++;
+                nr = r - dr; nc = c - dc;
+                while (nr >= 0 && nr < GRID_COUNT && nc >= 0 && nc < GRID_COUNT && board[nr][nc] === player) {
+                    count++; nr -= dr; nc -= dc;
+                }
+                if (!(nr >= 0 && nr < GRID_COUNT && nc >= 0 && nc < GRID_COUNT) || (board[nr][nc] !== 0 && board[nr][nc] !== player)) block++;
+                if (count >= 5) score += 100000;
+                else if (count === 4) score += block === 0 ? 10000 : 2000;
+                else if (count === 3) score += block === 0 ? 1000 : 200;
+                else if (count === 2) score += block === 0 ? 100 : 20;
+            }
+            return score;
+        }
+
+        function scanForWinningMoves() {
+            const tips = [];
+            for (let r = 0; r < GRID_COUNT; r++) {
+                for (let c = 0; c < GRID_COUNT; c++) {
+                    if (board[r][c] === 0) {
+                        if (simulatedCheckWin(r, c, 1)) tips.push({r, c, player: 1});
+                        else if (simulatedCheckWin(r, c, 2)) tips.push({r, c, player: 2});
+                    }
+                }
+            }
+            return tips;
+        }
+
+        function simulatedCheckWin(r, c, player) {
+            const directions = [[[0, 1], [0, -1]], [[1, 0], [-1, 0]], [[1, 1], [-1, -1]], [[1, -1], [-1, 1]]];
+            for (let dir of directions) {
+                let count = 1;
+                for (let [dr, dc] of dir) {
+                    let nr = r + dr, nc = c + dc;
+                    while (nr >= 0 && nr < GRID_COUNT && nc >= 0 && nc < GRID_COUNT && board[nr][nc] === player) {
+                        count++; nr += dr; nc += dc;
+                    }
+                }
+                if (count >= 5) return true;
+            }
+            return false;
+        }
+
+        function checkWin(r, c) {
+            return simulatedCheckWin(r, c, board[r][c]);
+        }
+
+        function endGame(winner) {
+            isGameOver = true;
+            AudioEngine.playWin();
+            let msg = winner === 1 ? '🎉 黑子獲勝！' : '🎉 白子獲勝！';
+            if (isAiMode) msg = winner === 1 ? '🏆 你贏了電腦！' : '🤖 電腦獲勝，再接再厲！';
+            winnerResult.innerText = msg;
+            gameOverModal.classList.remove('hidden');
+            blackThreatLabel.classList.add('hidden');
+            whiteThreatLabel.classList.add('hidden');
+        }
+
+        function updateUI() {
+            playerBlackUI.classList.toggle('active-player', currentPlayer === 1);
+            playerWhiteUI.classList.toggle('active-player', currentPlayer === 2);
+            const blackWinning = winningMoves.some(m => m.player === 1);
+            const whiteWinning = winningMoves.some(m => m.player === 2);
+            blackThreatLabel.classList.toggle('hidden', !blackWinning);
+            whiteThreatLabel.classList.toggle('hidden', !whiteWinning);
+        }
+
+        function undoMove() {
+            if (moveHistory.length === 0 || isGameOver || isThinking) return;
+            
+            AudioEngine.playUndo();
+
+            if (isAiMode && moveHistory.length >= 2) {
+                for (let i = 0; i < 2; i++) {
+                    const lastMove = moveHistory.pop();
+                    board[lastMove.r][lastMove.c] = 0;
+                }
+                currentPlayer = 1;
+            } else {
+                const lastMove = moveHistory.pop();
+                board[lastMove.r][lastMove.c] = 0;
+                currentPlayer = lastMove.player;
+            }
+            winningMoves = scanForWinningMoves();
+            updateUI();
+            drawBoard();
+        }
+
+        function resetGame() {
+            initBoard();
+        }
+
+        window.addEventListener('resize', initCanvas);
+        initCanvas();
+        initBoard();
+    </script>
+</body>
+</html>
